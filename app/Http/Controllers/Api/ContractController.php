@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use App\Models\Contract;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
 
 class ContractController extends Controller
@@ -26,6 +27,53 @@ class ContractController extends Controller
         $userId = $request->user()->id;
         $contracts = Contract::with('images')->where('user_id', $userId)->orderBy('created_at', 'desc')->get();
         return response()->json($contracts);
+    }
+
+    /**
+     * Helper: Upload file lên storage disk (S3 production / local dev)
+     */
+    private function uploadImage($file): string
+    {
+        $disk = config('app.env') === 'production' ? 's3' : 'public';
+        $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
+        $path = $file->storeAs('uploads', $filename, $disk);
+
+        if ($disk === 's3') {
+            return Storage::disk('s3')->url($path);
+        }
+
+        return '/storage/' . $path;
+    }
+
+    /**
+     * Helper: Xóa file từ storage disk
+     */
+    private function deleteStorageImage(string $imageUrl): void
+    {
+        // Xử lý URL S3
+        if (str_contains($imageUrl, 's3') || str_contains($imageUrl, 'amazonaws.com')) {
+            $path = parse_url($imageUrl, PHP_URL_PATH);
+            $path = ltrim($path, '/');
+            // Remove bucket name prefix if present
+            $bucket = config('filesystems.disks.s3.bucket');
+            if ($bucket && str_starts_with($path, $bucket)) {
+                $path = substr($path, strlen($bucket) + 1);
+            }
+            Storage::disk('s3')->delete($path);
+            return;
+        }
+
+        // Xử lý file local (legacy /uploads/ path hoặc /storage/uploads/ path)
+        if (str_starts_with($imageUrl, '/storage/')) {
+            $path = str_replace('/storage/', '', $imageUrl);
+            Storage::disk('public')->delete($path);
+        } elseif (str_starts_with($imageUrl, '/uploads/')) {
+            // Legacy: file cũ lưu trực tiếp trong public/uploads
+            $filePath = public_path($imageUrl);
+            if (file_exists($filePath) && is_file($filePath)) {
+                unlink($filePath);
+            }
+        }
     }
 
     // 2. TẠO HỢP ĐỒNG MỚI (ĐÃ NÂNG CẤP LƯU NHIỀU ẢNH)
@@ -73,23 +121,22 @@ class ContractController extends Controller
             ]);
 
             // ==========================================
-            // XỬ LÝ LƯU NHIỀU ẢNH (NÂNG CẤP MỚI)
+            // XỬ LÝ LƯU NHIỀU ẢNH (S3 / LOCAL)
             // ==========================================
             if ($request->hasFile('images')) {
                 $files = $request->file('images');
                 foreach ($files as $index => $file) {
-                    $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
-                    $file->move(public_path('uploads'), $filename);
+                    $imageUrl = $this->uploadImage($file);
 
                     \App\Models\ContractImage::create([
                         'contract_id' => $contract->id,
-                        'image_url' => '/uploads/' . $filename,
+                        'image_url' => $imageUrl,
                         'is_main' => $index === 0 ? true : false
                     ]);
 
                     // Ảnh đầu tiên được chọn làm ảnh đại diện cho hợp đồng
                     if ($index === 0) {
-                        $contract->image = '/uploads/' . $filename;
+                        $contract->image = $imageUrl;
                         $contract->save();
                     }
                 }
@@ -142,17 +189,16 @@ class ContractController extends Controller
         if ($request->hasFile('images')) {
             $files = $request->file('images');
             foreach ($files as $index => $file) {
-                $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
-                $file->move(public_path('uploads'), $filename);
+                $imageUrl = $this->uploadImage($file);
 
                 \App\Models\ContractImage::create([
                     'contract_id' => $contract->id,
-                    'image_url' => '/uploads/' . $filename,
+                    'image_url' => $imageUrl,
                     'is_main' => $index === 0 ? true : false
                 ]);
 
                 if ($index === 0) {
-                    $contract->image = '/uploads/' . $filename;
+                    $contract->image = $imageUrl;
                     $contract->save();
                 }
             }
@@ -248,10 +294,8 @@ class ContractController extends Controller
         $image = \App\Models\ContractImage::find($id);
         if (!$image) return response()->json(['status' => 'error'], 404);
 
-        $filePath = public_path($image->image_url);
-        if (file_exists($filePath) && is_file($filePath)) {
-            unlink($filePath);
-        }
+        // Xóa file từ storage (S3 hoặc local)
+        $this->deleteStorageImage($image->image_url);
 
         $image->delete();
         return response()->json(['status' => 'success'], 200);

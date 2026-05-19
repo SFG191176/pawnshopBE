@@ -1,0 +1,37 @@
+# Dependencies (built in Docker)
+/vendor
+/node_modules
+
+# Version control
+.git
+.gitattributes
+.gitignore
+
+# Environment (set via Render dashboard)
+.env
+.env.backup
+.env.production
+
+# IDE & editor files
+.phpactor.json
+.editorconfig
+.vscode
+.idea
+
+# Testing
+/tests
+phpunit.xml
+.phpunit.result.cache
+
+# Documentation
+/docs
+README.md
+
+# Development tools
+/storage/pail
+npm-debug.log
+yarn-error.log
+
+# OS files
+Thumbs.db
+.DS_Store
