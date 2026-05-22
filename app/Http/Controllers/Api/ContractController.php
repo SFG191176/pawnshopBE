@@ -30,17 +30,14 @@ class ContractController extends Controller
     }
 
     /**
-     * Helper: Upload file lên storage disk (S3 production / local dev)
+     * Helper: Upload file lên storage disk (Đã chốt cứng dùng Local Public)
      */
     private function uploadImage($file): string
     {
-        $disk = config('app.env') === 'production' ? 's3' : 'public';
+        // Ép buộc hệ thống luôn luôn lưu ảnh vào két sắt của Vietnix (public)
+        $disk = 'public';
         $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
         $path = $file->storeAs('uploads', $filename, $disk);
-
-        if ($disk === 's3') {
-            return Storage::disk('s3')->url($path);
-        }
 
         return '/storage/' . $path;
     }
@@ -48,13 +45,12 @@ class ContractController extends Controller
     /**
      * Helper: Xóa file từ storage disk
      */
-    private function deleteStorageImage(string $imageUrl): void
+    private function deleteStorageImage(string          $imageUrl): void
     {
-        // Xử lý URL S3
+        // Vẫn giữ lại đoạn S3 này để phòng ngừa rủi ro (lỡ trong database của bạn đang có sẵn link s3 cũ thì không bị lỗi sập web khi bấm xóa)
         if (str_contains($imageUrl, 's3') || str_contains($imageUrl, 'amazonaws.com')) {
             $path = parse_url($imageUrl, PHP_URL_PATH);
             $path = ltrim($path, '/');
-            // Remove bucket name prefix if present
             $bucket = config('filesystems.disks.s3.bucket');
             if ($bucket && str_starts_with($path, $bucket)) {
                 $path = substr($path, strlen($bucket) + 1);
@@ -63,7 +59,7 @@ class ContractController extends Controller
             return;
         }
 
-        // Xử lý file local (legacy /uploads/ path hoặc /storage/uploads/ path)
+        // Xử lý file local (Xóa ảnh chuẩn của Vietnix)
         if (str_starts_with($imageUrl, '/storage/')) {
             $path = str_replace('/storage/', '', $imageUrl);
             Storage::disk('public')->delete($path);
@@ -121,7 +117,7 @@ class ContractController extends Controller
             ]);
 
             // ==========================================
-            // XỬ LÝ LƯU NHIỀU ẢNH (S3 / LOCAL)
+            // XỬ LÝ LƯU NHIỀU ẢNH
             // ==========================================
             if ($request->hasFile('images')) {
                 $files = $request->file('images');
@@ -294,7 +290,7 @@ class ContractController extends Controller
         $image = \App\Models\ContractImage::find($id);
         if (!$image) return response()->json(['status' => 'error'], 404);
 
-        // Xóa file từ storage (S3 hoặc local)
+        // Xóa file từ storage
         $this->deleteStorageImage($image->image_url);
 
         $image->delete();
