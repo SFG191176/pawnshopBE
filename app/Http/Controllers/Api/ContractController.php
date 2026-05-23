@@ -30,16 +30,16 @@ class ContractController extends Controller
     }
 
     /**
-     * Helper: Upload file lên storage disk (Đã chốt cứng dùng Local Public)
+     * Helper: Upload file lên storage disk (VƯỢT RÀO: LƯU THẲNG RA MẶT TIỀN PUBLIC)
      */
     private function uploadImage($file): string
     {
-        // Ép buộc hệ thống luôn luôn lưu ảnh vào két sắt của Vietnix (public)
-        $disk = 'public';
+        // LƯU THẲNG RA MẶT TIỀN: Chuyển file vào thư mục public/uploads
         $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
-        $path = $file->storeAs('uploads', $filename, $disk);
+        $file->move(public_path('uploads'), $filename);
 
-        return '/storage/' . $path;
+        // Trả về đường link mới (không còn chữ storage nữa)
+        return '/uploads/' . $filename;
     }
 
     /**
@@ -64,7 +64,7 @@ class ContractController extends Controller
             $path = str_replace('/storage/', '', $imageUrl);
             Storage::disk('public')->delete($path);
         } elseif (str_starts_with($imageUrl, '/uploads/')) {
-            // Legacy: file cũ lưu trực tiếp trong public/uploads
+            // Legacy: file cũ hoặc file vừa lưu trực tiếp trong public/uploads
             $filePath = public_path($imageUrl);
             if (file_exists($filePath) && is_file($filePath)) {
                 unlink($filePath);
