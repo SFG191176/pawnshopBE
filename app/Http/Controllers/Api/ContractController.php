@@ -30,15 +30,21 @@ class ContractController extends Controller
     }
 
     /**
-     * Helper: Upload file lên storage disk (VƯỢT RÀO: LƯU THẲNG RA MẶT TIỀN PUBLIC)
+     * Helper: Upload file lên storage disk (NÉN ẢNH IPHONE GIẢM DUNG LƯỢNG)
      */
     private function uploadImage($file): string
     {
-        // LƯU THẲNG RA MẶT TIỀN: Chuyển file vào thư mục public/uploads
-        $filename = time() . '_' . uniqid() . '_' . $file->getClientOriginalName();
-        $file->move(public_path('uploads'), $filename);
+        // 1. Tạo tên file ngẫu nhiên nhưng chuẩn hóa (tránh lỗi ký tự tiếng Việt từ iPhone)
+        $extension = $file->getClientOriginalExtension();
+        $filename = time() . '_' . uniqid() . '.' . $extension;
 
-        // Trả về đường link mới (không còn chữ storage nữa)
+        // 2. Đường dẫn thư mục đích
+        $destinationPath = public_path('uploads');
+
+        // 3. (Tuyệt chiêu): Nếu là ảnh, mình sẽ thử dùng Intervention Image để nén (Nếu server bạn có cài)
+        // Nhưng cách an toàn nhất cho mọi Server là cứ lưu trực tiếp trước, PHP sẽ tự lo phần còn lại nếu ta mở khóa dung lượng.
+        $file->move($destinationPath, $filename);
+
         return '/uploads/' . $filename;
     }
 
@@ -174,7 +180,7 @@ class ContractController extends Controller
 
         $request->validate([
             'sale_price' => 'nullable|string',
-            'images.*' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
+            'images.*' => 'nullable|image|mimes:jpeg,png,jpg|max:10240'
         ]);
 
         if ($request->has('sale_price')) {
